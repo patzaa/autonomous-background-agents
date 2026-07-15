@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hausverwaltung.agent-script-audit</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-c</string>
+        <string>/Users/dan/.local/bin/hausverwaltung-agent-script-audit.sh</string>
+    </array>
+
+    <!-- Mon (1), Wed (3), Fri (5), Sun (0) at 01:00 local time.
+         ~1.75-day average spacing — the closest launchd analogue to
+         "every 2 days at 01:00" (launchd has no */2 day-of-month sugar).
+         01:00 chosen so the user is asleep and runs finish long before
+         work starts. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key>
+            <integer>1</integer>
+            <key>Hour</key>
+            <integer>1</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>3</integer>
+            <key>Hour</key>
+            <integer>1</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>5</integer>
+            <key>Hour</key>
+            <integer>1</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>0</integer>
+            <key>Hour</key>
+            <integer>1</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-agent-script-audit.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-agent-script-audit.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

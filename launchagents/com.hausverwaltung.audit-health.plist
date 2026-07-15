@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hausverwaltung.audit-health</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-c</string>
+        <string>/Users/dan/.local/bin/hausverwaltung-audit-health.sh</string>
+    </array>
+
+    <!-- Monday 08:00 local time. A weekly digest fresh when the work week starts:
+         surfaces any stale audit PR + dedups openclaw-upgrade issues. 08:00 (not the
+         01:00/03:00 of the other crons) so the result is waiting when the user logs on. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-audit-health.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-audit-health.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

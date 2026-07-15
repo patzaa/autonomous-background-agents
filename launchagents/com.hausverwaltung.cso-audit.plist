@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hausverwaltung.cso-audit</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-c</string>
+        <string>/Users/dan/.local/bin/hausverwaltung-cso-audit.sh</string>
+    </array>
+
+    <!-- Tue (2) + Thu (4) at 02:00 local time -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key>
+            <integer>2</integer>
+            <key>Hour</key>
+            <integer>2</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>4</integer>
+            <key>Hour</key>
+            <integer>2</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
+
+    <!-- Append all stdout/stderr to a single rolling log -->
+    <key>StandardOutPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-cso-audit.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-cso-audit.log</string>
+
+    <!-- Don't run when the plist is loaded — only on schedule -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- If the Mac was asleep at 02:00, launchd will run it on next wake -->
+</dict>
+</plist>

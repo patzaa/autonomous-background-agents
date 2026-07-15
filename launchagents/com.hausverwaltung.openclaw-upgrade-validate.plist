@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hausverwaltung.openclaw-upgrade-validate</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-c</string>
+        <string>/Users/dan/.local/bin/hausverwaltung-openclaw-upgrade-validate.sh</string>
+    </array>
+
+    <!-- Daily 00:00 local. Cheap-idle most days (a single `gh release view`
+         API call → no-op exit in ~5s). On drift days: full build + /qa flow,
+         finishes well before deploy-validate at 01:00 in most cases.
+         If still running at 01:00, deploy-validate skips on port-busy check. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>0</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-openclaw-upgrade-validate.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-openclaw-upgrade-validate.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

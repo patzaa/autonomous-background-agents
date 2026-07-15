@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hausverwaltung.observer</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-c</string>
+        <string>/Users/dan/.local/bin/hausverwaltung-observer.sh</string>
+    </array>
+
+    <!-- Wednesday 03:00 local time. 2h AFTER the Wed 01:00 audit crons, so their
+         freshest run is on record when the Observer reads it. It watches the whole
+         com.hausverwaltung.* fleet: classifies each agent (healthy/blocked/failing/
+         stale/dead), trims oversized logs to free disk, and escalates anything
+         actionable via a pinned issue + a macOS notification (so a silently-skipping
+         agent can never again rot unnoticed for days — the 2026-07-15 lesson). -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>3</integer>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-observer.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-observer.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

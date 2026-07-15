@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hausverwaltung.worktree-cleaner</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-c</string>
+        <string>/Users/dan/.local/bin/hausverwaltung-worktree-cleaner.sh</string>
+    </array>
+
+    <!-- Daily 03:30 local — after openclaw-upgrade-validate (00:00) and clear
+         of the Monday 02:00 ui-watch. Removes worktrees/branches PROVEN merged
+         (in code, not via GitHub state), auto-ships stale unmerged worktrees
+         (capped 2/night), sweeps merged branches (remote capped 30/night).
+         Failures raise a clickable macOS notification (herdr + claude). -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-worktree-cleaner.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dan/Library/Logs/hausverwaltung-worktree-cleaner.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
