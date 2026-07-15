@@ -157,7 +157,7 @@ if gh release view "$LATEST_RAW" --repo openclaw/openclaw --json body -q .body >
     RN_PROMPT="You are the OpenClaw upgrade release-notes reviewer for our Hausverwaltung platform. Upstream released ${LATEST_RAW}; we are pinned to ${PINNED}. Decide whether OUR code needs changes BEFORE this upgrade can be adopted.
 
 # OUR INTEGRATION CONTRACT (what can break us)
-1. Gateway WS protocol pinned at version 4 — src/lib/openclaw/gateway-client.ts, scripts/openclaw-debug.mjs, scripts/openclaw-dev.mjs (all in ${HV_REPO}).
+1. Gateway WS protocol pinned at version 4 — src/lib/openclaw/gateway-client.ts, scripts/openclaw-debug.mjs, scripts/openclaw-dev.mjs (all in ${REPO}).
 2. Container CMD override: openclaw gateway --allow-unconfigured --bind lan --port 18789.
 3. Device pairing flow: operator.pairing scope + device.pair.approve RPC (pnpm openclaw approve).
 4. Dockerfile.openclaw rebrand seds over /app/dist/control-ui — index.html + assets JS/CSS, the literal 'OpenClaw' brand string, the red hex palette (#ff4d4d/#ef4444/#dc2626/…).
@@ -165,7 +165,7 @@ if gh release view "$LATEST_RAW" --repo openclaw/openclaw --json body -q .body >
 6. Config/workspace layout: /openclaw/openclaw.json mount + per-agent workspaces.
 
 # TASK
-Read the release notes at ${RELNOTES_FILE} (you have shell + read access; cross-read ${HV_REPO} if needed, but MODIFY NOTHING). Judge every contract point: does this release change auth, the gateway protocol/API, CLI flags, pairing, config layout, or the Control-UI build layout our rebrand patches?
+Read the release notes at ${RELNOTES_FILE} (you have shell + read access; cross-read ${REPO} if needed, but MODIFY NOTHING). Judge every contract point: does this release change auth, the gateway protocol/API, CLI flags, pairing, config layout, or the Control-UI build layout our rebrand patches?
 
 # OUTPUT — STRICT
 First line exactly one of:
@@ -176,11 +176,13 @@ Then markdown: if NEEDS_CHANGES, one bullet per affected contract point (release
     claude --dangerously-skip-permissions -p "$RN_PROMPT" > "$RN_OUT" 2>&1
     RN_EXIT=$?
     if [ "$RN_EXIT" -eq 0 ] && head -1 "$RN_OUT" | grep -qE '^VERDICT:'; then
-        RELNOTES_VERDICT=$(head -1 "$RN_OUT" | sed 's/^VERDICT:[[:space:]]*//')
+        # prefix match, not equality — the judge may decorate the verdict line
+        # ("VERDICT: NEEDS_CHANGES — gateway v5"); CRs stripped.
+        RELNOTES_VERDICT=$(head -1 "$RN_OUT" | tr -d '\r' | sed 's/^VERDICT:[[:space:]]*//')
         RELNOTES_ASSESSMENT=$(cat "$RN_OUT")
         echo ""
         echo "Release-notes review: VERDICT ${RELNOTES_VERDICT}"
-        if [ "$RELNOTES_VERDICT" = "NEEDS_CHANGES" ]; then
+        if print -r -- "$RELNOTES_VERDICT" | grep -q '^NEEDS_CHANGES'; then
             # Clickable: click opens a herdr pane with a seeded claude session
             # in ~/hausverwaltung to work the required changes.
             "$HOME/.local/bin/hausverwaltung-notify.sh" \

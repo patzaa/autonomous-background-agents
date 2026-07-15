@@ -27,8 +27,10 @@ if [ -n "$TN" ] && [ -x "$TN" ]; then
         PF="$STATE/prompt-$(date +%s)-$$.txt"
         printf '%s' "$PROMPT" > "$PF"
     fi
+    # ${(q)…} shell-quotes the values (paths with quotes/spaces/metachars can
+    # neither break nor inject into the command run at click time).
     "$TN" -title "$TITLE" -subtitle "$SUBTITLE" -message "$MESSAGE" -sound Basso \
-        -execute "$HOME/.local/bin/hausverwaltung-notify-open.sh '$CWD' '$PF'" >/dev/null 2>&1
+        -execute "$HOME/.local/bin/hausverwaltung-notify-open.sh ${(q)CWD} ${(q)PF}" >/dev/null 2>&1
 else
     /usr/bin/osascript -e "display notification \"$MESSAGE\" with title \"$TITLE\" subtitle \"$SUBTITLE\" sound name \"Basso\"" 2>/dev/null || true
 fi

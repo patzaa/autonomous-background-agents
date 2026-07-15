@@ -23,9 +23,13 @@ if command -v herdr >/dev/null 2>&1; then
 fi
 
 # Fallback: plain Terminal.app window (prompt must be typed manually).
-/usr/bin/osascript <<EOF
-tell application "Terminal"
-    activate
-    do script "cd ${CWD} && claude"
-end tell
+# CWD travels as an argv item and is quoted BY AppleScript (`quoted form of`)
+# — never interpolated into the script source, so it can't break or inject.
+/usr/bin/osascript - "$CWD" <<'EOF'
+on run argv
+    tell application "Terminal"
+        activate
+        do script "cd " & quoted form of (item 1 of argv) & " && claude"
+    end tell
+end run
 EOF
