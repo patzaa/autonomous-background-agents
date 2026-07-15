@@ -15,10 +15,13 @@ PROMPT=""
 [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ] && PROMPT="$(cat "$PROMPT_FILE")"
 
 if command -v herdr >/dev/null 2>&1; then
+    # Agent names must be unique across the whole herdr session — a fixed
+    # name fails with agent_name_taken once any other pane uses it.
+    NAME="notify-$(date +%s)-$$"
     if [ -n "$PROMPT" ]; then
-        herdr agent start claude --cwd "$CWD" -- claude "$PROMPT" && exit 0
+        herdr agent start "$NAME" --cwd "$CWD" -- claude "$PROMPT" && exit 0
     else
-        herdr agent start claude --cwd "$CWD" -- claude && exit 0
+        herdr agent start "$NAME" --cwd "$CWD" -- claude && exit 0
     fi
 fi
 
