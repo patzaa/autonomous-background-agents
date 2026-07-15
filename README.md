@@ -1,6 +1,6 @@
-# hausverwaltung-agents
+# autonomous-background-agents
 
-The fleet of **autonomous background agents** that operate the [Hausverwaltung](https://github.com/patzaa/Hausverwaltung) platform from Dan's Mac. Each agent is a zsh script driven by **macOS launchd** (`launchagents/*.plist`), most of them delegate judgment calls to a headless **Claude Code** session (`claude -p`), and every run appends to its own log under `~/Library/Logs/hausverwaltung-*.log`.
+A fleet of **autonomous background agents** that operates a production platform ([Hausverwaltung](https://github.com/patzaa/Hausverwaltung) — a German property-management system) from a single Mac. Each agent is a zsh script driven by **macOS launchd** (`launchagents/*.plist`), most of them delegate judgment calls to a headless **Claude Code** session (`claude -p`), and every run appends to its own log under `~/Library/Logs/hausverwaltung-*.log`.
 
 Monitored live with [agenttop](https://github.com/patzaa/Agenttop) — an htop-style terminal dashboard for launchd agents + Claude token spend.
 
@@ -52,3 +52,7 @@ for p in ~/Library/LaunchAgents/com.hausverwaltung.*.plist; do launchctl bootstr
 Requirements: macOS, zsh, `git`, `gh` (authed), `claude` (Claude Code CLI), `podman`, `terminal-notifier` (`brew install terminal-notifier`), [herdr](https://github.com/patzaa/herdr) for click-to-session, tailnet access to the VPS for the validate agents.
 
 The **live copies** in `~/.local/bin` / `~/.local/lib` / `~/Library/LaunchAgents` are canonical; this repo is the versioned mirror. After editing a live script, run `./sync.sh` and commit.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
