@@ -406,6 +406,7 @@ QA_PROMPT="You are running OpenClaw-upgrade /qa-only verification. The container
 
 - Validate stack URL: ${VALIDATE_URL}
 - Backend: real .env on VPS → live Supabase, live OAuth, live integrations
+- Auth: use the dedicated QA demo user (claude-qa@houseclaw.local, admin — auditably separate from Dan's login). It lives in the SAME Supabase project the validate stack talks to, so it works against ${VALIDATE_URL}: for curl probes use \`curl -H \"Cookie: \$(pnpm -s auth:cookie)\" ${VALIDATE_URL}/...\`; in a browser, log in at ${VALIDATE_URL}/login with LOCAL_QA_AUTH_EMAIL/LOCAL_QA_AUTH_PASSWORD from .env.local. See CLAUDE.md 'Local auth for agent probes'. Test the logged-in dashboard surfaces, not just public pages.
 - Mode: REPORT ONLY. Do NOT modify any code in the local repo.
 
 # YOUR TASK
@@ -470,6 +471,7 @@ If you accidentally edit a file, immediately revert with git restore.
 
 # READ-ONLY ON LIVE BACKEND
 Same rules as /qa: live Supabase, live OAuth, no form submits that write data.
+Auth: log in as the QA demo user (LOCAL_QA_AUTH_EMAIL/LOCAL_QA_AUTH_PASSWORD from .env.local, or \`pnpm -s auth:cookie\` for header-based probes) so the DASHBOARD surfaces get reviewed, not just the login page.
 
 # VISUAL FOCUS
 Spacing, hierarchy, alignment, AI-slop patterns, broken layouts, OpenClaw-rendered UI surface (chat panel, approvals, agent dashboard). Test viewports: 375 / 768 / 1280 / 1920.
