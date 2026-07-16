@@ -78,11 +78,18 @@ fi
 # for THIS version is already open, don't re-validate and don't open a duplicate.
 # This is the source fix for the duplicate-issue pile-up (35 open before 2026-06-29):
 # every failed run used to `gh issue create` the same-titled issue afresh.
+# Match ONLY issues this agent's own failure paths create ("OpenClaw upgrade
+# BLOCKED: …"). The daily version-check workflow files a TRACKING issue with
+# the same label + version in the title ("OpenClaw upgrade available: …") —
+# matching that one deadlocks the pipeline: tracking issue stays open until
+# the upgrade lands, so validation would never run and the upgrade could
+# never land (caught 2026-07-16: #760 suppressed the whole 2026.7.1 run
+# including the release-notes review).
 EXISTING_ISSUE=$(gh issue list --repo patzaa/Hausverwaltung --label openclaw-upgrade --state open \
-    --search "${LATEST_NORM} in:title" --json number,title \
-    --jq "[.[] | select(.title | contains(\"${LATEST_NORM}\"))][0].number // empty" 2>/dev/null)
+    --search "\"OpenClaw upgrade BLOCKED\" ${LATEST_NORM} in:title" --json number,title \
+    --jq "[.[] | select((.title | contains(\"${LATEST_NORM}\")) and (.title | startswith(\"OpenClaw upgrade BLOCKED\")))][0].number // empty" 2>/dev/null)
 if [ -n "$EXISTING_ISSUE" ]; then
-    echo "Skipped: an openclaw-upgrade issue for ${LATEST_NORM} is already open (#${EXISTING_ISSUE}) — not re-validating or duplicating."
+    echo "Skipped: a BLOCKED issue from a prior validation of ${LATEST_NORM} is still open (#${EXISTING_ISSUE}) — fix/close it, then re-run."
     exit 0
 fi
 
