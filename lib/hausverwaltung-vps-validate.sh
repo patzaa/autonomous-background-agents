@@ -261,18 +261,27 @@ try:
     d=json.load(sys.stdin)
 except Exception:
     d={}
-print(next((r.get('requestId','') for r in d.values() if r.get('clientId')=='gateway-client'),''))" 2>/dev/null)
+print(' '.join(r.get('requestId','') for r in d.values() if r.get('requestId')))" 2>/dev/null)
         [ -n "$reqid" ] && break
         sleep 5
     done
-    [ -z "$reqid" ] && { echo "  pairing: no pending gateway-client request after ~75s (Next.js not connecting?)"; return 1; }
+    [ -z "$reqid" ] && { echo "  pairing: no pending request after ~75s (Next.js not connecting?)"; return 1; }
     token=$(vps_ssh "podman exec '$container' sh -c 'echo \$OPENCLAW_GATEWAY_TOKEN'" 2>/dev/null | tr -d '\r\n ')
     [ -z "$token" ] && { echo "  pairing: could not read gateway token"; return 1; }
-    echo "  pairing: approving gateway-client request ${reqid} ..."
-    OC_GW_URL="ws://${VPS_HOST}:${gw_port}" OC_ORIGIN="http://${VPS_HOST}:${gw_port}" \
-        OC_TOKEN="$token" OC_REQUEST_ID="$reqid" \
-        NODE_PATH="$HOME/hausverwaltung/node_modules" \
-        node /Users/dan/.local/lib/openclaw-approve.cjs
+    # Approve EVERY pending request, not just the first gateway-client match:
+    # the WS probe registers its own pending request seconds before Next.js,
+    # with the same clientId — run 3 (2026-07-17) approved the probe's request
+    # and left Next.js NOT_PAIRED through both QA gates. On a throwaway
+    # validate stack, approving all pending devices is harmless.
+    local rid rc_all=1
+    for rid in ${=reqid}; do
+        echo "  pairing: approving pending request ${rid} ..."
+        OC_GW_URL="ws://${VPS_HOST}:${gw_port}" OC_ORIGIN="http://${VPS_HOST}:${gw_port}" \
+            OC_TOKEN="$token" OC_REQUEST_ID="$rid" \
+            NODE_PATH="$HOME/hausverwaltung/node_modules" \
+            node /Users/dan/.local/lib/openclaw-approve.cjs && rc_all=0
+    done
+    return $rc_all
 }
 
 # ── healthcheck (called from Mac, hits VPS over tailnet) ──────────────────

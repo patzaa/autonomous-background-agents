@@ -394,8 +394,19 @@ fi
 echo ""
 echo "[$(date -Iseconds)] Auto-pairing validate Next.js with the gateway ..."
 if vps_pair_validate_nextjs "$VALIDATE_GW_PORT"; then
-    echo "✓ paired — waiting 40s for Next.js to reconnect with the approval"
-    sleep 40
+    # VERIFY paired state end-to-end instead of a blind sleep: /api/health's
+    # openclaw check is only ok once Next.js reconnected WITH the approval.
+    # (Run 3 lesson: 'sleep 40' after approving the WRONG request let both QA
+    # gates run against a NOT_PAIRED chat surface.)
+    PAIR_OK=0
+    for i in $(seq 1 24); do
+        if curl -sf --max-time 5 "${VALIDATE_URL}/api/health" 2>/dev/null \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('checks',{}).get('openclaw',{}).get('ok') else 1)" 2>/dev/null; then
+            PAIR_OK=1; echo "✓ paired + verified — /api/health reports openclaw ok after $((i*5))s"; break
+        fi
+        sleep 5
+    done
+    [ "$PAIR_OK" -eq 1 ] || echo "WARN: paired, but /api/health never reported openclaw ok within 120s — /qa chat results may reflect pairing, not the image."
 else
     echo "WARN: auto-pair did not complete — /qa chat results may reflect pairing, not the image."
 fi
