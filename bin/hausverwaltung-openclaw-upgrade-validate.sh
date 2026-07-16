@@ -180,7 +180,7 @@ First line exactly one of:
   VERDICT: NEEDS_CHANGES
 Then markdown: if NEEDS_CHANGES, one bullet per affected contract point (release-note item → what we must change, which file, effort S/M/L). If SAFE, 2-3 bullets on why. Under 250 words. No file modifications, no commits, no issues."
     RN_OUT=$(mktemp)
-    claude --dangerously-skip-permissions -p "$RN_PROMPT" > "$RN_OUT" 2>&1
+    "$HOME/.local/bin/hausverwaltung-claude-run.sh" "$RN_OUT" --dangerously-skip-permissions -p "$RN_PROMPT"
     RN_EXIT=$?
     if [ "$RN_EXIT" -eq 0 ] && head -1 "$RN_OUT" | grep -qE '^VERDICT:'; then
         # prefix match, not equality — the judge may decorate the verdict line
@@ -430,7 +430,8 @@ Exit 0 if PASS (no critical/high bugs). Exit non-zero if FAIL."
 
 echo ""
 echo "[$(date -Iseconds)] Invoking /qa-only ..."
-claude --dangerously-skip-permissions -p "$QA_PROMPT" 2>&1 | tee "$QA_LOG"
+"$HOME/.local/bin/hausverwaltung-claude-run.sh" "$QA_LOG" --dangerously-skip-permissions -p "$QA_PROMPT"
+cat "$QA_LOG"
 
 # Distinguish a claude INFRA failure (out of credits, rate-limit, auth, network)
 # from a real QA verdict. An infra failure is NOT a product regression, so abort
@@ -482,7 +483,8 @@ Exit 0 if PASS. Exit non-zero if FAIL."
 
 echo ""
 echo "[$(date -Iseconds)] Invoking /design-review (report mode) ..."
-claude --dangerously-skip-permissions -p "$DR_PROMPT" 2>&1 | tee "$DR_LOG"
+"$HOME/.local/bin/hausverwaltung-claude-run.sh" "$DR_LOG" --dangerously-skip-permissions -p "$DR_PROMPT"
+cat "$DR_LOG"
 if grep -qiE "$CLAUDE_INFRA_RE" "$DR_LOG"; then
     REASON=$(grep -oiE "$CLAUDE_INFRA_RE" "$DR_LOG" | head -1)
     OUTCOME="aborted: design-review harness (claude) unavailable — ${REASON}"
@@ -614,7 +616,10 @@ Tail the run log. Find concrete improvements to the HARNESS ITSELF revealed by T
 Output under 120 words: what you logged + issue URL (if any)."
 echo ""
 echo "[$(date -Iseconds)] Self-improvement reflection ..."
-claude --dangerously-skip-permissions -p "$SI_PROMPT" 2>&1 | tail -10 || echo "(self-improve reflection skipped — claude error)"
+SI_OUT=$(mktemp)
+"$HOME/.local/bin/hausverwaltung-claude-run.sh" "$SI_OUT" --dangerously-skip-permissions -p "$SI_PROMPT" \
+    || echo "(self-improve reflection skipped — claude error)"
+tail -10 "$SI_OUT"; rm -f "$SI_OUT"
 
 # trap fires teardown
 exit 0

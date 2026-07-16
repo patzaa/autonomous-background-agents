@@ -207,7 +207,7 @@ Keep it tight and skimmable. Do NOT modify any files, do NOT commit, do NOT open
 
 echo ""
 echo "[$(date -Iseconds)] Evaluating diff with claude ..."
-claude --dangerously-skip-permissions -p "$PROMPT" > "$REPORT" 2>&1
+"$HOME/.local/bin/hausverwaltung-claude-run.sh" "$REPORT" --dangerously-skip-permissions -p "$PROMPT"
 CLAUDE_EXIT=$?
 
 if [ "$CLAUDE_EXIT" -ne 0 ]; then

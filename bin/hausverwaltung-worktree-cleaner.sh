@@ -235,7 +235,7 @@ OUTPUT: the very LAST line of your output must be exactly one of:
   RESULT: MERGED <pr-url>
   RESULT: PR_OPEN <pr-url>
   RESULT: NEEDS_HUMAN <short reason>"
-    (cd "$WT" && timeout 5400 claude --dangerously-skip-permissions -p "$SHIP_PROMPT" > "$SHIP_LOG" 2>&1)
+    (cd "$WT" && timeout 5400 "$HOME/.local/bin/hausverwaltung-claude-run.sh" "$SHIP_LOG" --dangerously-skip-permissions -p "$SHIP_PROMPT")
     SHIP_EXIT=$?
     RESULT_LINE=$(grep -E '^RESULT:' "$SHIP_LOG" | tail -1)
     echo "        claude exit ${SHIP_EXIT}; ${RESULT_LINE:-no RESULT line}"
