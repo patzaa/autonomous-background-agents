@@ -152,7 +152,8 @@ Exit 0 if PASS. Exit non-zero if FAIL."
 
 echo ""
 echo "[$(date -Iseconds)] Invoking /qa-only ..."
-claude --dangerously-skip-permissions -p "$QA_PROMPT" 2>&1 | tee "$QA_LOG"
+"$HOME/.local/bin/hausverwaltung-claude-run.sh" "$QA_LOG" --dangerously-skip-permissions -p "$QA_PROMPT"
+cat "$QA_LOG"
 # Parse verdict from output (claude CLI doesn't propagate agent verdicts as exit codes)
 if grep -qiE 'verdict:[^a-z]*\*?\*?pass' "$QA_LOG"; then
     QA_EXIT=0
@@ -173,7 +174,8 @@ OUTPUT (under 150 words): Verdict (PASS/FAIL), # visual issues by severity, Top 
 
 echo ""
 echo "[$(date -Iseconds)] Invoking /design-review (report mode) ..."
-claude --dangerously-skip-permissions -p "$DR_PROMPT" 2>&1 | tee "$DR_LOG"
+"$HOME/.local/bin/hausverwaltung-claude-run.sh" "$DR_LOG" --dangerously-skip-permissions -p "$DR_PROMPT"
+cat "$DR_LOG"
 if grep -qiE 'verdict:[^a-z]*\*?\*?pass' "$DR_LOG"; then
     DR_EXIT=0
 else

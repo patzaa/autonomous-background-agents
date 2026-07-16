@@ -112,8 +112,10 @@ End with one paragraph: branch name, PR URL (if any), finding count by severity,
 
 # --dangerously-skip-permissions is needed because the cron is unattended.
 # The agent is fenced by the prompt's safety rails above.
-claude --dangerously-skip-permissions -p "$PROMPT"
+CLAUDE_OUT=$(mktemp)
+"$HOME/.local/bin/hausverwaltung-claude-run.sh" "$CLAUDE_OUT" --dangerously-skip-permissions -p "$PROMPT"
 EXIT_CODE=$?
+cat "$CLAUDE_OUT"; rm -f "$CLAUDE_OUT"
 
 echo "Cleaning up worktree ..."
 cd "$REPO"

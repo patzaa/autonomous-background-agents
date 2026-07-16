@@ -253,8 +253,10 @@ Stage with \`git status --short\` first. Create labels if missing: \`gh label cr
 - # struggle findings (high-level categories)
 - anything skipped/reverted due to time"
 
-claude --dangerously-skip-permissions -p "$PROMPT"
+CLAUDE_OUT=$(mktemp)
+"$HOME/.local/bin/hausverwaltung-claude-run.sh" "$CLAUDE_OUT" --dangerously-skip-permissions -p "$PROMPT"
 EXIT_CODE=$?
+cat "$CLAUDE_OUT"; rm -f "$CLAUDE_OUT"
 
 # Deterministic keystone — guarantee the version bump + auto-merge regardless of
 # what the agent did inside `claude -p`. These two steps must not depend on the LLM

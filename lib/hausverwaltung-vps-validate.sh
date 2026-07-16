@@ -20,6 +20,11 @@ vps_load_env() {
             local val="${match[2]}"
             val="${val%\"}"; val="${val#\"}"
             val="${val%\'}"; val="${val#\'}"
+            # Die App-Credentials der Next.js-App gehören NICHT in die
+            # Agent-Umgebung: ein exportierter ANTHROPIC_API_KEY würde jeden
+            # claude-Call des Agenten auf API-Billing umleiten (Vorfall
+            # 2026-07-16, "Credit balance is too low" im Release-Notes-Review).
+            [ "$key" = "ANTHROPIC_API_KEY" ] && continue
             [ -z "${(P)key:-}" ] && export "$key=$val"
         done < "$f"
     done

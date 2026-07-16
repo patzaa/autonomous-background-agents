@@ -229,8 +229,10 @@ Append a one-line summary to \`docs/test-coverage/trend.md\` (create if missing)
 - Top 3 most concerning findings across all sections
 - What you skipped due to time, if any"
 
-claude --dangerously-skip-permissions -p "$PROMPT"
+CLAUDE_OUT=$(mktemp)
+"$HOME/.local/bin/hausverwaltung-claude-run.sh" "$CLAUDE_OUT" --dangerously-skip-permissions -p "$PROMPT"
 EXIT_CODE=$?
+cat "$CLAUDE_OUT"; rm -f "$CLAUDE_OUT"
 
 # Deterministic keystone — guarantee the version bump + auto-merge regardless of
 # what the agent did inside `claude -p`. (No label arg: coverage PRs are matched by
