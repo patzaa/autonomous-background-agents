@@ -25,7 +25,7 @@ unset ANTHROPIC_AUTH_TOKEN 2>/dev/null
 
 claude "$@" < /dev/null > "$OUT" 2>&1
 rc=$?
-if [ "$rc" -ne 0 ] && grep -qiE "reached your .* limit|usage limit|overloaded" "$OUT"; then
+if [ "$rc" -ne 0 ] && grep -qiE "reached your .* limit|usage limit|session limit|hit your .* limit|overloaded" "$OUT"; then
     {
         echo "(⤷ Standard-Modell nicht verfügbar — Retry mit --model opus)"
         claude --model opus "$@" < /dev/null 2>&1

@@ -154,6 +154,15 @@ echo ""
 echo "[$(date -Iseconds)] Invoking /qa-only ..."
 "$HOME/.local/bin/hausverwaltung-claude-run.sh" "$QA_LOG" --dangerously-skip-permissions -p "$QA_PROMPT"
 cat "$QA_LOG"
+# Infra-Abbruch VOR der Verdict-Interpretation: ein claude-Ausfall (Limit,
+# Credits, Netz) ist KEIN Produkt-Fail — sonst entsteht ein irreführendes
+# Regressions-Issue (Lektion aus upgrade-validate, 2026-07-16).
+CLAUDE_INFRA_RE='session limit|hit your [a-z]* limit|credit balance is too low|insufficient.*credit|usage limit|rate.?limit|overloaded_error|authentication_error|api error|connection error|fetch failed|ECONNREFUSED|ETIMEDOUT'
+if grep -qiE "$CLAUDE_INFRA_RE" "$QA_LOG"; then
+    OUTCOME="aborted: QA harness (claude) unavailable"
+    echo "❌ /qa could not run — claude unavailable. Aborting WITHOUT a verdict; no issue opened."
+    exit 1
+fi
 # Parse verdict from output (claude CLI doesn't propagate agent verdicts as exit codes)
 if grep -qiE 'verdict:[^a-z]*\*?\*?pass' "$QA_LOG"; then
     QA_EXIT=0
@@ -176,6 +185,11 @@ echo ""
 echo "[$(date -Iseconds)] Invoking /design-review (report mode) ..."
 "$HOME/.local/bin/hausverwaltung-claude-run.sh" "$DR_LOG" --dangerously-skip-permissions -p "$DR_PROMPT"
 cat "$DR_LOG"
+if grep -qiE "$CLAUDE_INFRA_RE" "$DR_LOG"; then
+    OUTCOME="aborted: design-review harness (claude) unavailable"
+    echo "❌ /design-review could not run — claude unavailable. Aborting WITHOUT a verdict; no issue opened."
+    exit 1
+fi
 if grep -qiE 'verdict:[^a-z]*\*?\*?pass' "$DR_LOG"; then
     DR_EXIT=0
 else

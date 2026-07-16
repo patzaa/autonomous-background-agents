@@ -438,7 +438,7 @@ cat "$QA_LOG"
 # from a real QA verdict. An infra failure is NOT a product regression, so abort
 # the run cleanly rather than opening a misleading "validate gates failed" issue
 # (the false-positive #385 came from "Credit balance is too low" being read as FAIL).
-CLAUDE_INFRA_RE='credit balance is too low|insufficient.*credit|invalid x?-?api[ -]?key|authentication_error|overloaded_error|rate.?limit|usage limit|api error|connection error|fetch failed|ECONNREFUSED|ETIMEDOUT'
+CLAUDE_INFRA_RE='session limit|hit your [a-z]* limit|credit balance is too low|insufficient.*credit|invalid x?-?api[ -]?key|authentication_error|overloaded_error|rate.?limit|usage limit|api error|connection error|fetch failed|ECONNREFUSED|ETIMEDOUT'
 if grep -qiE "$CLAUDE_INFRA_RE" "$QA_LOG"; then
     REASON=$(grep -oiE "$CLAUDE_INFRA_RE" "$QA_LOG" | head -1)
     OUTCOME="aborted: QA harness (claude) unavailable — ${REASON}"
