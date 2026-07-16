@@ -15,12 +15,12 @@ set -u
 OUT="${1:?usage: hausverwaltung-claude-run.sh <outfile> <claude-args...>}"
 shift
 
-claude "$@" > "$OUT" 2>&1
+claude "$@" < /dev/null > "$OUT" 2>&1
 rc=$?
 if [ "$rc" -ne 0 ] && grep -qiE "reached your .* limit|usage limit|overloaded" "$OUT"; then
     {
         echo "(⤷ Standard-Modell nicht verfügbar — Retry mit --model opus)"
-        claude --model opus "$@" 2>&1
+        claude --model opus "$@" < /dev/null 2>&1
     } > "$OUT"
     rc=$?
 fi
