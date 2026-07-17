@@ -535,11 +535,27 @@ DR_TAIL=$(tail -60 "$DR_LOG")
 # idempotency guard. Only trips when pairing did NOT verify (PAIR_OK=0), so a
 # genuine post-pairing NOT_PAIRED regression would still surface. QA itself
 # says "not an upgrade regression" in exactly this case (runs 3+5).
-if [ "$PAIR_OK" -ne 1 ] && { [ "$QA_EXIT" -ne 0 ] || [ "$DR_EXIT" -ne 0 ]; } \
-   && printf '%s\n%s' "$QA_TAIL" "$DR_TAIL" | grep -qiE 'NOT_PAIRED|PAIRING_REQUIRED'; then
-    OUTCOME="aborted: chat surface NOT_PAIRED (harness pairing, not the image)"
+GATES_FAILED=0
+{ [ "$QA_EXIT" -ne 0 ] || [ "$DR_EXIT" -ne 0 ]; } && GATES_FAILED=1
+GATES_BOTH="$(printf '%s\n%s' "$QA_TAIL" "$DR_TAIL")"
+# (a) unpaired chat surface — only when pairing itself didn't verify, so a
+#     genuine post-pairing regression still surfaces.
+ENV_DEFECT=""
+if [ "$GATES_FAILED" -eq 1 ] && [ "$PAIR_OK" -ne 1 ] \
+   && printf '%s' "$GATES_BOTH" | grep -qiE 'NOT_PAIRED|PAIRING_REQUIRED'; then
+    ENV_DEFECT="chat surface NOT_PAIRED (harness pairing)"
+fi
+# (b) EACCES on the openclaw workspace — a bind-mount perms gap the prod deploy
+#     fixes (chown 1000 + chmod), so it can NEVER be an image regression.
+#     Unconditional (fires even with pairing verified). Found 2026-07-17.
+if [ "$GATES_FAILED" -eq 1 ] \
+   && printf '%s' "$GATES_BOTH" | grep -qiE 'EACCES.*openclaw|openclaw-workspace-state|permission denied.*openclaw'; then
+    ENV_DEFECT="EACCES on the openclaw workspace (harness bind-mount perms)"
+fi
+if [ -n "$ENV_DEFECT" ]; then
+    OUTCOME="aborted: ${ENV_DEFECT}, not the image"
     echo ""
-    echo "❌ Gates failed on an unpaired chat surface — this is a HARNESS pairing defect, not a ${LATEST_NORM} regression. Aborting WITHOUT a BLOCKED issue (would deadlock the next run). Fix pairing + re-run."
+    echo "❌ Gates failed on a HARNESS defect (${ENV_DEFECT}), not a ${LATEST_NORM} regression. Aborting WITHOUT a BLOCKED issue (would deadlock the next run). Fix + re-run."
     exit 1
 fi
 

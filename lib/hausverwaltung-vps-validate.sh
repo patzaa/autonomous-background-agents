@@ -107,6 +107,18 @@ vps_setup_workspace() {
 
     # Symlink secrets that live on the VPS only (never cross the wire)
     vps_ssh "cd '$workspace' && ln -sf \"\$HOME/hausverwaltung/.env\" .env"
+
+    # Make the openclaw workspace writable by the container's node user (UID
+    # 1000) — the SAME chown/chmod prod's deploy.yml applies. Without it the
+    # bind-mounted workspace stays owned by the deploy user and the paired
+    # agent hits `EACCES … openclaw-workspace-state.json` on its FIRST write,
+    # so every chat errors even though pairing succeeded (found 2026-07-17 by
+    # a real round-trip to Cora). Prod does this; the validate stack must too.
+    vps_ssh "cd '$workspace' && [ -d openclaw ] && podman unshare sh -c '
+        chown -R 1000:1000 openclaw &&
+        chmod -R u+rwX,g+rwX openclaw &&
+        find openclaw -type d -exec chmod g+s {} +
+    ' 2>/dev/null || true"
 }
 
 # Generate per-run docker-compose.validate.yml on the VPS by DERIVING it from
