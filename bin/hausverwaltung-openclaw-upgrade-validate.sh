@@ -698,10 +698,24 @@ ${DR_TAIL}
                     if (cd "$REPO" && pnpm -s vps health 2>/dev/null) | grep -q '"status":"ok"'; then HEALTH_OK=1; break; fi
                     sleep 10
                 done
+                # ALL containers must report their own healthcheck as healthy —
+                # web /api/health alone misses a flapping WORKER (real 2026.7.1
+                # deploy 2026-07-17: worker pg-boss DB-connect timeout failed the
+                # deploy job while web+openclaw were fine; it self-healed, but a
+                # verify that never looks at the worker can't tell). Poll a bit —
+                # Quadlet self-heal can take a couple of restart cycles.
+                UNITS_OK=0
+                for i in $(seq 1 12); do
+                    U=$(cd "$REPO" && pnpm -s vps units 2>/dev/null)
+                    if printf '%s' "$U" | grep -qE '^nextjs .*healthy' \
+                       && printf '%s' "$U" | grep -qE '^worker .*healthy' \
+                       && printf '%s' "$U" | grep -qE '^openclaw .*healthy'; then UNITS_OK=1; break; fi
+                    sleep 15
+                done
                 GW_OK=0
                 (cd "$REPO" && timeout 60 pnpm -s debug:openclaw sessions 2>/dev/null) | grep -qiE 'SESSIONS|AGENTS' && GW_OK=1
-                [ "$HEALTH_OK" -eq 1 ] && [ "$GW_OK" -eq 1 ] && VERIFY_OK=1
-                echo "  prod verify: health=${HEALTH_OK} gateway=${GW_OK}"
+                [ "$HEALTH_OK" -eq 1 ] && [ "$UNITS_OK" -eq 1 ] && [ "$GW_OK" -eq 1 ] && VERIFY_OK=1
+                echo "  prod verify: health=${HEALTH_OK} units(all-healthy)=${UNITS_OK} gateway=${GW_OK}"
             else
                 echo "❌ deploy run failed or not found (run=${DEPLOY_RUN:-none})."
             fi
