@@ -426,6 +426,43 @@ else
     echo "✓ WS connect negotiated protocol OK (pairing/auth reply is expected for a fresh validate gateway)."
 fi
 
+# ── rebrand palette auto-fix (design-review feedback, deterministic) ────────
+# A control-UI overhaul can introduce a NEW danger-red our sed list doesn't map
+# (2026.7.1 shipped #ff6b6b) — the design review flags it as "ships red past the
+# gate", which otherwise HOLDS the auto-merge for a human. Instead: read the reds
+# that actually SURVIVED the rebrand in the freshly-built assets, and if any are
+# unmapped, auto-add additive sed rules (+ the gate's red-absence list) to the
+# branch's Dockerfile and REBUILD once. Additive + idempotent → can't break the
+# existing rebrand. This turns the mechanical finding into automatic feedback.
+PALETTE_FIXED=""
+OC_CONTAINER=$(vps_ssh "podman ps --format '{{.Names}}'" 2>/dev/null | grep -i validate | grep -vi nextjs | grep -i openclaw | head -1)
+if [ -n "$OC_CONTAINER" ]; then
+    ASSET_HEXES=$(vps_ssh "podman exec '$OC_CONTAINER' sh -c 'grep -rhoiE \"#[0-9a-f]{6}\" /app/dist/control-ui/assets 2>/dev/null | sort -u'" 2>/dev/null)
+    if [ -n "$ASSET_HEXES" ]; then
+        PALETTE_MAP=$(printf '%s\n' "$ASSET_HEXES" | python3 /Users/dan/.local/lib/hausverwaltung-rebrand-autofix.py "$MAC_WT/Dockerfile.openclaw" 2>/dev/null)
+        if [ -n "$PALETTE_MAP" ]; then
+            PALETTE_FIXED="$PALETTE_MAP"
+            echo ""
+            echo "[$(date -Iseconds)] Design-review feedback: unmapped upstream reds found in built UI — auto-adding to the rebrand + rebuilding:"
+            printf '%s\n' "$PALETTE_MAP" | sed 's/^/    /'
+            ( cd "$MAC_WT" && git -c user.email="cron@hausverwaltung.local" -c user.name="OpenClaw upgrade cron" \
+                commit -aqm "chore(openclaw): auto-map new upstream reds to HomeClaw green (design-review feedback)
+$(printf '%s' "$PALETTE_MAP" | sed 's/^/  /')" )
+            vps_setup_workspace "$VPS_WORKSPACE" "$MAC_WT" && vps_write_validate_compose "$VPS_WORKSPACE" "$VALIDATE_PORT" "$VALIDATE_GW_PORT"
+            echo "[$(date -Iseconds)] Rebuilding validate stack with the palette fix ..."
+            if vps_build_stack "$VPS_WORKSPACE"; then
+                vps_up_stack "$VPS_WORKSPACE"
+                vps_wait_healthy "${VALIDATE_URL}/api/health" || echo "WARN: stack not healthy after palette-fix rebuild — gates will judge."
+            else
+                echo "WARN: palette-fix rebuild FAILED — the added sed rules broke the build. Reverting the auto-fix commit; gates run on the original image."
+                ( cd "$MAC_WT" && git reset --hard HEAD~1 >/dev/null 2>&1 )
+                PALETTE_FIXED=""
+                vps_setup_workspace "$VPS_WORKSPACE" "$MAC_WT" >/dev/null 2>&1 && vps_build_stack "$VPS_WORKSPACE" >/dev/null 2>&1 && vps_up_stack "$VPS_WORKSPACE" && vps_wait_healthy "${VALIDATE_URL}/api/health" >/dev/null 2>&1
+            fi
+        fi
+    fi
+fi
+
 # ── auto-pair Next.js ↔ gateway so /qa can actually test chat ──────────────
 # The validate stack boots UNPAIRED; without this, /api/chat/history 502s and
 # /qa reads it as an image regression (the spurious #383). Approve the pending
@@ -617,6 +654,9 @@ ${PREFLIGHT_REPORT}
 ## Release-notes review (${RELNOTES_VERDICT})
 ${RELNOTES_ASSESSMENT}
 
+## Rebrand palette auto-fix
+${PALETTE_FIXED:-_(none — every upstream red was already mapped)_}
+
 ## /qa-only output
 \`\`\`
 ${QA_TAIL}
@@ -779,6 +819,9 @@ else
 
 ## Release-notes review (${RELNOTES_VERDICT})
 ${RELNOTES_ASSESSMENT}
+
+## Rebrand palette auto-fix
+${PALETTE_FIXED:-_(none — every upstream red was already mapped)_}
 
 ## /qa-only output
 \`\`\`
