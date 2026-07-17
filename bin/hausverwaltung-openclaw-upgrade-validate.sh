@@ -58,6 +58,21 @@ if [ "$PINNED_BASE" = "$LATEST_NORM" ]; then
 fi
 echo "Drift: ${PINNED} → ${LATEST_NORM} (upstream ${LATEST_RAW})"
 
+# ── claude-availability preflight ──────────────────────────────────────────
+# The pipeline burns ~30 min of local+VPS builds BEFORE the first claude-
+# dependent gate. If claude (incl. the opus fallback) is limited RIGHT NOW,
+# exit early instead — the next scheduled run retries. (Run 4, 2026-07-17:
+# full build cycle wasted, QA aborted on 'hit your session limit'.)
+CLAUDE_PING=$(mktemp)
+if ! "$HOME/.local/bin/hausverwaltung-claude-run.sh" "$CLAUDE_PING" -p "Reply with exactly: OK" \
+    || ! grep -q "OK" "$CLAUDE_PING"; then
+    echo "Skipped: claude unavailable right now ($(tail -1 "$CLAUDE_PING" | cut -c1-80)) — retrying at the next scheduled run."
+    rm -f "$CLAUDE_PING"
+    exit 0
+fi
+rm -f "$CLAUDE_PING"
+echo "✓ claude available (preflight ping ok)"
+
 # ── pre-flight ─────────────────────────────────────────────────────────────
 
 if ! vps_ping; then
