@@ -408,22 +408,20 @@ fi
 # gateway-client device, then give Next.js one reconnect cycle to come up paired.
 echo ""
 echo "[$(date -Iseconds)] Auto-pairing validate Next.js with the gateway ..."
-if vps_pair_validate_nextjs "$VALIDATE_GW_PORT"; then
-    # VERIFY paired state end-to-end instead of a blind sleep: /api/health's
-    # openclaw check is only ok once Next.js reconnected WITH the approval.
-    # (Run 3 lesson: 'sleep 40' after approving the WRONG request let both QA
-    # gates run against a NOT_PAIRED chat surface.)
-    PAIR_OK=0
-    for i in $(seq 1 24); do
-        if curl -sf --max-time 5 "${VALIDATE_URL}/api/health" 2>/dev/null \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('checks',{}).get('openclaw',{}).get('ok') else 1)" 2>/dev/null; then
-            PAIR_OK=1; echo "✓ paired + verified — /api/health reports openclaw ok after $((i*5))s"; break
-        fi
-        sleep 5
-    done
-    [ "$PAIR_OK" -eq 1 ] || echo "WARN: paired, but /api/health never reported openclaw ok within 120s — /qa chat results may reflect pairing, not the image."
+# The pairing routine needs an authenticated cookie to TRIGGER Next.js's lazy
+# gateway connect (curl /api/chat/sessions) — the QA demo user, same one the
+# gates log in as. auth:cookie does a fresh Supabase login and prints the
+# sb-… Cookie header; it targets the same Supabase project the validate stack
+# uses, so the cookie is valid against VALIDATE_URL:3001.
+PAIR_COOKIE=$(cd "$REPO" && pnpm -s auth:cookie 2>/dev/null)
+PAIR_OK=0
+if [ -z "$PAIR_COOKIE" ]; then
+    echo "WARN: could not mint QA auth cookie (auth:cookie failed) — pairing can't trigger Next.js; /qa chat may be NOT_PAIRED."
+elif vps_pair_validate_nextjs "$VALIDATE_GW_PORT" "$VALIDATE_URL" "$PAIR_COOKIE"; then
+    PAIR_OK=1
+    echo "✓ pairing verified end-to-end — Next.js chat surface is live."
 else
-    echo "WARN: auto-pair did not complete — /qa chat results may reflect pairing, not the image."
+    echo "WARN: auto-pair did not verify — /qa chat results may reflect pairing, not the image."
 fi
 
 # ── /qa-only ──────────────────────────────────────────────────────────────
@@ -530,6 +528,20 @@ fi
 
 QA_TAIL=$(tail -60 "$QA_LOG")
 DR_TAIL=$(tail -60 "$DR_LOG")
+
+# NOT_PAIRED signature guard: if the gates failed but the failure is our own
+# unpaired chat surface (not an image defect), abort WITHOUT a BLOCKED issue —
+# an open "OpenClaw upgrade BLOCKED" issue also deadlocks the next run via the
+# idempotency guard. Only trips when pairing did NOT verify (PAIR_OK=0), so a
+# genuine post-pairing NOT_PAIRED regression would still surface. QA itself
+# says "not an upgrade regression" in exactly this case (runs 3+5).
+if [ "$PAIR_OK" -ne 1 ] && { [ "$QA_EXIT" -ne 0 ] || [ "$DR_EXIT" -ne 0 ]; } \
+   && printf '%s\n%s' "$QA_TAIL" "$DR_TAIL" | grep -qiE 'NOT_PAIRED|PAIRING_REQUIRED'; then
+    OUTCOME="aborted: chat surface NOT_PAIRED (harness pairing, not the image)"
+    echo ""
+    echo "❌ Gates failed on an unpaired chat surface — this is a HARNESS pairing defect, not a ${LATEST_NORM} regression. Aborting WITHOUT a BLOCKED issue (would deadlock the next run). Fix pairing + re-run."
+    exit 1
+fi
 
 if [ "$QA_EXIT" -eq 0 ] && [ "$DR_EXIT" -eq 0 ]; then
     echo ""

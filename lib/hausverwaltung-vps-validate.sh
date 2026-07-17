@@ -243,45 +243,68 @@ vps_collect_logs() {
 # The validate gateway runs --allow-unconfigured but still loads our mounted
 # openclaw.json (dangerouslyDisableDeviceAuth=true), so the Control-UI approve
 # path works. gw_port = the tailnet host port the gateway is published on.
+# Pair the validate Next.js container with the fresh validate gateway.
+#
+# ROOT CAUSE this routine fixes (runs 3-5, 2026-07-16/17): Next.js connects to
+# the gateway LAZILY (gateway-client.ts `ensureConnected()` — only on the first
+# gateway RPC, e.g. a chat call), NOT at boot. And its connect frame uses the
+# SAME `client.id: "gateway-client"` as our WS probe. So at pairing time only
+# the probe has registered a pending request; approving "all pending" grabs the
+# probe's and returns success while Next.js never registered — its request
+# appears only when QA fires the first chat, long after pairing. Result:
+# NOT_PAIRED chat surface through both gates, three verdicts contaminated.
+#
+# The fix is a TRIGGER + real VERIFY:
+#   1. curl an authenticated endpoint that forces a gateway RPC
+#      (/api/chat/sessions → chatSessionsList → ensureConnected) so Next.js
+#      registers its gateway-client pending request DURING the pairing window.
+#   2. poll + approve every pending request each cycle (probe + Next.js share
+#      clientId, so approve all — harmless on a throwaway stack), re-triggering
+#      the connect so a raced first attempt still lands.
+#   3. VERIFY for real: once approved, Next.js reconnects with its granted
+#      deviceToken and no longer registers a pending request. A pending.json
+#      that STAYS empty after a re-trigger = paired. (The old verify —
+#      /api/health `openclaw.ok` — is HTTP /healthz reachability only, a proven
+#      false positive: green while the chat surface was NOT_PAIRED.)
+#
+# Args: <gw_port> <validate_url> <auth_cookie>
 vps_pair_validate_nextjs() {
-    local gw_port="$1"
-    local container pending reqid token i
-    # The validate stack has TWO containers (…_nextjs_1, …_openclaw_1) and BOTH
-    # names contain "openclaw" (the project is "…-openclaw-upgrade-…"), so a bare
-    # `grep openclaw | head -1` can grab the nextjs one. Exclude nextjs explicitly.
+    local gw_port="$1" validate_url="$2" cookie="$3"
+    local container token i pending reqids rid
     container=$(vps_ssh "podman ps --format '{{.Names}}'" 2>/dev/null | grep -i validate | grep -vi nextjs | grep -i openclaw | head -1)
     [ -z "$container" ] && { echo "  pairing: no validate openclaw container found — skipping"; return 1; }
-    # Poll up to ~75s: Next.js only registers a pending request after its first
-    # gateway connect attempt, which can lag the /api/health gate.
-    reqid=""
-    for i in $(seq 1 15); do
-        pending=$(vps_ssh "podman exec '$container' cat /home/node/.openclaw/devices/pending.json 2>/dev/null")
-        reqid=$(printf '%s' "$pending" | python3 -c "import json,sys
-try:
-    d=json.load(sys.stdin)
-except Exception:
-    d={}
-print(' '.join(r.get('requestId','') for r in d.values() if r.get('requestId')))" 2>/dev/null)
-        [ -n "$reqid" ] && break
-        sleep 5
-    done
-    [ -z "$reqid" ] && { echo "  pairing: no pending request after ~75s (Next.js not connecting?)"; return 1; }
     token=$(vps_ssh "podman exec '$container' sh -c 'echo \$OPENCLAW_GATEWAY_TOKEN'" 2>/dev/null | tr -d '\r\n ')
     [ -z "$token" ] && { echo "  pairing: could not read gateway token"; return 1; }
-    # Approve EVERY pending request, not just the first gateway-client match:
-    # the WS probe registers its own pending request seconds before Next.js,
-    # with the same clientId — run 3 (2026-07-17) approved the probe's request
-    # and left Next.js NOT_PAIRED through both QA gates. On a throwaway
-    # validate stack, approving all pending devices is harmless.
-    local rid rc_all=1
-    for rid in ${=reqid}; do
-        echo "  pairing: approving pending request ${rid} ..."
-        OC_GW_URL="ws://${VPS_HOST}:${gw_port}" OC_ORIGIN="http://${VPS_HOST}:${gw_port}" \
-            OC_TOKEN="$token" OC_REQUEST_ID="$rid" \
-            NODE_PATH="$HOME/hausverwaltung/node_modules" \
-            node /Users/dan/.local/lib/openclaw-approve.cjs && rc_all=0
+
+    local -A approved
+    local paired=0
+    for i in $(seq 1 20); do
+        # (Re)trigger Next.js's lazy gateway connect so it registers its
+        # gateway-client pending request. Authenticated → hits the gateway path.
+        curl -s -o /dev/null --max-time 8 -H "Cookie: ${cookie}" "${validate_url}/api/chat/sessions" 2>/dev/null || true
+        sleep 3
+        pending=$(vps_ssh "podman exec '$container' cat /home/node/.openclaw/devices/pending.json 2>/dev/null")
+        reqids=$(printf '%s' "$pending" | python3 -c "import json,sys
+try: d=json.load(sys.stdin)
+except Exception: d={}
+print(' '.join(r.get('requestId','') for r in (d.values() if isinstance(d,dict) else d) if isinstance(r,dict) and r.get('requestId')))" 2>/dev/null)
+        for rid in ${=reqids}; do
+            [ -n "${approved[$rid]:-}" ] && continue
+            echo "  pairing: approving pending request ${rid} ..."
+            OC_GW_URL="ws://${VPS_HOST}:${gw_port}" OC_ORIGIN="http://${VPS_HOST}:${gw_port}" \
+                OC_TOKEN="$token" OC_REQUEST_ID="$rid" \
+                NODE_PATH="$HOME/hausverwaltung/node_modules" \
+                node /Users/dan/.local/lib/openclaw-approve.cjs && approved[$rid]=1
+        done
+        # VERIFY: after ≥1 approval, a re-trigger that produces NO new pending
+        # request means Next.js reconnected with its granted deviceToken.
+        if [ ${#approved[@]} -gt 0 ] && [ -z "$reqids" ]; then
+            paired=1; echo "  pairing: verified — Next.js reconnected paired (no new pending after ${i} cycles, ${#approved[@]} approved)"; break
+        fi
     done
-    return $rc_all
+    [ "$paired" -eq 1 ] && return 0
+    echo "  pairing: NOT verified after ~2min (approved ${#approved[@]}, last pending: ${reqids:-none}) — chat surface may be NOT_PAIRED."
+    return 1
 }
 
 # ── healthcheck (called from Mac, hits VPS over tailnet) ──────────────────
