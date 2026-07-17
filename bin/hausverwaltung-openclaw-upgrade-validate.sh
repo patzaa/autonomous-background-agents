@@ -260,9 +260,33 @@ git worktree add -b "$BRANCH" "$MAC_WT" origin/main >/dev/null
 cd "$MAC_WT"
 sed -i.bak -E "s|ghcr\\.io/openclaw/openclaw:[^[:space:]]+|ghcr.io/openclaw/openclaw:${NEW_PIN}|" Dockerfile.openclaw
 rm -f Dockerfile.openclaw.bak
+
+# Version bump on the branch so the release-guards CI check (`check`) passes —
+# required for auto-merge (VERSION must be strictly > origin/main). Deterministic
+# patch bump (no tsx dependency): last segment +1 off origin/main's VERSION.
+BASE_VER=$(git show origin/main:VERSION 2>/dev/null | tr -d '[:space:]')
+NEW_VER=$(printf '%s' "$BASE_VER" | awk -F. -v OFS=. '{ $NF=$NF+1; print }')
+if [ -n "$NEW_VER" ] && [ "$NEW_VER" != "$BASE_VER" ]; then
+    printf '%s' "$NEW_VER" > VERSION
+    # package.json "version" field (tolerate absence)
+    [ -f package.json ] && sed -i.bak -E "s/(\"version\"[[:space:]]*:[[:space:]]*\")[^\"]+(\")/\1${NEW_VER}\2/" package.json && rm -f package.json.bak
+    # Prepend a CHANGELOG entry above the current top ## [ heading.
+    if [ -f CHANGELOG.md ]; then
+        CL_ENTRY="## [${NEW_VER}] - ${DATE}\n\n### Changed\n- **OpenClaw-Image ${PINNED} → ${NEW_PIN} (VPS-validiert, autonom).** Release-Notes-Review ${RELNOTES_VERDICT}, lokaler + prod-äquivalenter VPS-Build grün, Device-Pairing verifiziert, /qa-only + /design-review PASS. Automatisch vom Cron \`com.hausverwaltung.openclaw-upgrade-validate\` erstellt.\n"
+        python3 - "$CL_ENTRY" <<'PYEOF'
+import sys,re
+entry=sys.argv[1].replace('\\n','\n')
+s=open('CHANGELOG.md').read()
+m=re.search(r'^## \[',s,re.M)
+i=m.start() if m else len(s)
+open('CHANGELOG.md','w').write(s[:i]+entry+'\n'+s[i:])
+PYEOF
+    fi
+    git add VERSION package.json CHANGELOG.md 2>/dev/null
+fi
 git add Dockerfile.openclaw
 git -c user.email="cron@hausverwaltung.local" -c user.name="OpenClaw upgrade cron" \
-    commit -m "chore(openclaw): bump pin ${PINNED} → ${NEW_PIN}" >/dev/null
+    commit -m "chore(openclaw): bump pin ${PINNED} → ${NEW_PIN} (v${NEW_VER})" >/dev/null
 
 # Symlink env-files so the worktree's build context can read them where
 # the rsync excludes won't carry them (we don't ship secrets to VPS).
@@ -607,6 +631,120 @@ ${DR_TAIL}
 
     OUTCOME="pr_opened: ${PR_URL}"
     echo "PR: ${PR_URL}"
+
+    # ── AUTO-MERGE + DEPLOY + VERIFY + ROLLBACK (end-to-end) ─────────────────
+    # Armed only via a marker file (flip off with: rm the marker). Merges +
+    # deploys to PROD ONLY when EVERY gate is green: release-notes VERDICT SAFE,
+    # both QA+DR PASS (this branch), pairing verified, AND the required CI checks
+    # (check+validate) pass on the PR. Any miss → leave the PR for a human.
+    # Post-deploy it verifies prod for real and AUTO-ROLLS-BACK on failure.
+    PR_NUM=$(printf '%s' "$PR_URL" | grep -oE '[0-9]+$')
+    AUTO_MERGE_MARKER="$HOME/.local/state/openclaw-validate/auto-merge-enabled"
+    NOTIFY="$HOME/.local/bin/hausverwaltung-notify.sh"
+    if [ ! -f "$AUTO_MERGE_MARKER" ]; then
+        echo "Auto-merge disarmed (no marker at ${AUTO_MERGE_MARKER}) — leaving PR ${PR_URL} for human review."
+    elif [ "$RELNOTES_VERDICT" != "SAFE" ]; then
+        echo "Auto-merge held: release-notes VERDICT is ${RELNOTES_VERDICT} (not SAFE) — PR ${PR_URL} needs human review."
+        "$NOTIFY" "OpenClaw Upgrade" "Merge zurückgehalten (${LATEST_NORM})" \
+            "Gates grün, aber Release-Notes-Review = ${RELNOTES_VERDICT}. Klicken zum Prüfen von PR #${PR_NUM}." \
+            "$REPO" "PR #${PR_NUM} (OpenClaw ${LATEST_NORM}) hat alle Test-Gates bestanden, aber der Release-Notes-Review ergab ${RELNOTES_VERDICT} statt SAFE — deshalb NICHT auto-gemergt. Prüfe den PR-Body + die vollen Notes unter ~/.local/state/openclaw-validate/release-notes-${LATEST_NORM}.md und entscheide über den Merge." || true
+    elif [ "$PAIR_OK" -ne 1 ]; then
+        echo "Auto-merge held: pairing did not verify — chat surface unproven. PR ${PR_URL} for human."
+    else
+        echo ""
+        echo "[$(date -Iseconds)] All gates green + armed — waiting for required CI checks on PR #${PR_NUM} ..."
+        CI_OK=0
+        for i in $(seq 1 30); do  # up to ~30 min
+            SUM=$(gh pr checks "$PR_NUM" --repo patzaa/Hausverwaltung 2>/dev/null)
+            printf '%s' "$SUM" | grep -qiE '\bfail\b' && { echo "❌ a required check FAILED — not merging."; break; }
+            # both required contexts (check, validate) present and passing, none pending
+            if printf '%s' "$SUM" | grep -qE '^check[[:space:]].*pass' \
+               && printf '%s' "$SUM" | grep -qE '^validate[[:space:]].*pass' \
+               && ! printf '%s' "$SUM" | grep -qiE '\bpending\b'; then
+                CI_OK=1; break
+            fi
+            sleep 60
+        done
+        if [ "$CI_OK" -ne 1 ]; then
+            OUTCOME="auto_merge_held: CI not green"
+            echo "Auto-merge held: required checks not all green within ~30min — PR ${PR_URL} for human."
+        else
+            echo "[$(date -Iseconds)] CI green — merging PR #${PR_NUM} (squash) ..."
+            if ! gh pr merge "$PR_NUM" --repo patzaa/Hausverwaltung --squash --delete-branch 2>&1 | tail -2; then
+                # server state may say MERGED even on a cleanup error — re-check
+                [ "$(gh pr view "$PR_NUM" --repo patzaa/Hausverwaltung --json state -q .state 2>/dev/null)" = "MERGED" ] \
+                    || { OUTCOME="auto_merge_failed"; echo "❌ merge failed — PR ${PR_URL} for human."; exit 1; }
+            fi
+            MERGE_SHA=$(gh pr view "$PR_NUM" --repo patzaa/Hausverwaltung --json mergeCommit -q .mergeCommit.oid 2>/dev/null)
+            echo "✓ merged as ${MERGE_SHA:0:12} — the push triggers the prod deploy. Watching ..."
+            sleep 15
+            DEPLOY_RUN=$(gh run list --repo patzaa/Hausverwaltung --branch main --limit 5 \
+                --json databaseId,headSha,workflowName \
+                --jq "[.[] | select(.workflowName|test(\"Deploy\";\"i\")) | select(.headSha|startswith(\"${MERGE_SHA:0:12}\"))][0].databaseId // empty" 2>/dev/null)
+            [ -z "$DEPLOY_RUN" ] && DEPLOY_RUN=$(gh run list --repo patzaa/Hausverwaltung --branch main --limit 3 --json databaseId,workflowName --jq "[.[] | select(.workflowName|test(\"Deploy\";\"i\"))][0].databaseId // empty" 2>/dev/null)
+            DEPLOY_OK=0
+            if [ -n "$DEPLOY_RUN" ] && gh run watch "$DEPLOY_RUN" --repo patzaa/Hausverwaltung --exit-status >/dev/null 2>&1; then
+                DEPLOY_OK=1
+            fi
+            # ── POST-DEPLOY VERIFY (prod, read-only over tailnet) ────────────
+            # health (nextjs+openclaw) + a REAL protocol-negotiated gateway
+            # round-trip (pnpm debug:openclaw sessions). Both must pass.
+            VERIFY_OK=0
+            if [ "$DEPLOY_OK" -eq 1 ]; then
+                echo "[$(date -Iseconds)] Deploy done — verifying PROD (health + gateway round-trip) ..."
+                sleep 20
+                HEALTH_OK=0
+                for i in $(seq 1 12); do
+                    if (cd "$REPO" && pnpm -s vps health 2>/dev/null) | grep -q '"status":"ok"'; then HEALTH_OK=1; break; fi
+                    sleep 10
+                done
+                GW_OK=0
+                (cd "$REPO" && timeout 60 pnpm -s debug:openclaw sessions 2>/dev/null) | grep -qiE 'SESSIONS|AGENTS' && GW_OK=1
+                [ "$HEALTH_OK" -eq 1 ] && [ "$GW_OK" -eq 1 ] && VERIFY_OK=1
+                echo "  prod verify: health=${HEALTH_OK} gateway=${GW_OK}"
+            else
+                echo "❌ deploy run failed or not found (run=${DEPLOY_RUN:-none})."
+            fi
+
+            if [ "$VERIFY_OK" -eq 1 ]; then
+                OUTCOME="AUTO-DEPLOYED + VERIFIED: ${NEW_PIN} live"
+                echo "✅ ${OUTCOME}"
+                "$NOTIFY" "OpenClaw Upgrade" "Live & verifiziert: ${LATEST_NORM}" \
+                    "Autonom auf Prod gehoben (${PINNED} → ${NEW_PIN}). Health + Gateway-Round-Trip grün." \
+                    "$REPO" "OpenClaw wurde autonom auf ${NEW_PIN} gehoben (PR #${PR_NUM}, ${MERGE_SHA:0:12}): alle Gates grün, Deploy erfolgreich, Prod-Health + Gateway-Round-Trip verifiziert. Zeig mir eine kurze Bestätigung." || true
+            else
+                # ── AUTO-ROLLBACK (git-consistent revert PR, auto-merged) ────
+                OUTCOME="AUTO-ROLLBACK: prod verify failed after ${NEW_PIN}"
+                echo "❌ PROD VERIFY FAILED — rolling back ${NEW_PIN} via revert PR ..."
+                RB_BRANCH="revert-openclaw-${LATEST_NORM}-$(date +%s)"
+                RB_WT="$HOME/hausverwaltung-rollback-${LATEST_NORM}"
+                git -C "$REPO" worktree remove --force "$RB_WT" 2>/dev/null || true
+                if git -C "$REPO" worktree add -b "$RB_BRANCH" "$RB_WT" origin/main >/dev/null 2>&1 \
+                   && git -C "$RB_WT" revert --no-edit "$MERGE_SHA" >/dev/null 2>&1 \
+                   && git -C "$RB_WT" push -u origin "$RB_BRANCH" >/dev/null 2>&1; then
+                    RB_PR=$(gh pr create --repo patzaa/Hausverwaltung --base main --head "$RB_BRANCH" \
+                        --title "revert: OpenClaw ${LATEST_NORM} — prod verify failed (auto-rollback)" \
+                        --label openclaw-upgrade \
+                        --body "Auto-rollback: PROD health/gateway verify failed after merging PR #${PR_NUM} (${MERGE_SHA:0:12}). Reverting the pin to \`${PINNED}\`. 🤖" 2>&1 | tail -1)
+                    RB_NUM=$(printf '%s' "$RB_PR" | grep -oE '[0-9]+$')
+                    # wait for required checks on the revert, then merge
+                    for i in $(seq 1 20); do
+                        RS=$(gh pr checks "$RB_NUM" --repo patzaa/Hausverwaltung 2>/dev/null)
+                        printf '%s' "$RS" | grep -qE '^check[[:space:]].*pass' && printf '%s' "$RS" | grep -qE '^validate[[:space:]].*pass' && ! printf '%s' "$RS" | grep -qiE '\bpending\b' && break
+                        printf '%s' "$RS" | grep -qiE '\bfail\b' && break
+                        sleep 60
+                    done
+                    gh pr merge "$RB_NUM" --repo patzaa/Hausverwaltung --squash --delete-branch 2>&1 | tail -1
+                    echo "  rollback PR ${RB_PR} merged — a deploy of the reverted pin is now running."
+                fi
+                git -C "$REPO" worktree remove --force "$RB_WT" 2>/dev/null || true
+                "$NOTIFY" "OpenClaw Upgrade" "⚠ Auto-Rollback: ${LATEST_NORM}" \
+                    "Prod-Verify nach dem Merge fehlgeschlagen — Pin auf ${PINNED} zurückgerollt. Klicken für Details." \
+                    "$REPO" "DRINGEND: Der autonome OpenClaw-Upgrade auf ${NEW_PIN} (PR #${PR_NUM}, ${MERGE_SHA:0:12}) hat den Prod-Verify (health=${HEALTH_OK:-?}/gateway=${GW_OK:-?}) NICHT bestanden. Ich habe automatisch einen Revert-PR erstellt und gemergt (zurück auf ${PINNED}). Prüfe: (1) ist Prod nach dem Rollback-Deploy wieder gesund (pnpm vps health), (2) WARUM ist ${NEW_PIN} in Prod gescheitert, obwohl der Parallel-Stack grün war?" || true
+                exit 1
+            fi
+        fi
+    fi
 else
     echo ""
     echo "[$(date -Iseconds)] One or both gates failed — opening issue"
